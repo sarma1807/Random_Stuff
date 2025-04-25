@@ -1,0 +1,64 @@
+Oracle Maximum Availability Architecture (MAA)
+
+on Primary Database :
+RAC       provides Scalability and Server High Availability
+Flashback provides Human Error Correction
+ASM       provides Disk/Storage Volume Management
+RMAN      provides on-disk backups
+
+on Standby Database :
+Data Guard           provides Disaster Recovery & Query offload
+Golden Gate          provides active-active heterogeneous data replication
+Oracle Secure Backup provides on-tape backups
+
+--------------------------------
+Types of Standby :
+
+Physical Standby
+Logical Standby
+Snapshot Standby
+
+--------------------------------
+
+LNS - Logwriter Network Service process on Primary database is responsible for reading redo log from redo log buffer/online log files/archive log files and transmit the redo log entries to RFS on Standby.
+RFS - Remote File Service process on Standby is responsible for receiving redo from Primary database LNS process and save the redo entries to SRL files.
+SRL - Standby Redo Log Files on Standby database (note that SRL files can exist on Primary database also, but they are used only on Standby database).
+
+MRP - Media Recovery Process
+LSP - Logical Standby Process
+
+FAL - Fetch Archive Log (whoever is Fetching is FAL_SERVER=STANDBY) : is used to resolve log gap resolution and to retrieve missing logs from PRIMARY DB archive logs
+
+--------------------------------
+
+Data Guard supports 2 redo apply methods :
+
+REDO Apply - is used in Physical Standby mode, where redo is applied to Standby database. Apply Process in this mode is called Media Recovery Process (MRP)
+SQL  Apply - is used in Logical  Standby mode, where redo received is converted to SQL and executed on Standby database. Apply Process in this mode is called Logical Standby Process (LSP)
+
+--------------------------------
+
+Data Guard supports 2 redo transport methods :
+
+Synchronous  Redo Transport (SYNC)
+Asynchronous Redo Transport (ASYNC)
+
+--------------------------------
+
+Standby database can be configured to run in following modes :
+
+Maximum Performance  (ASYNC redo transport)
+Maximum Availability (SYNC redo transport)
+Maximum Protection   (SYNC redo transport)
+
+--------------------------------
+
+AFFIRM/NOAFFIRM
+
+AFFIRM   - redo transport service in primary database waits for acknowledgement from standby, that the redo has been RECEIVED & WRITTEN to standby redo log files. Default with SYNC Redo Transport.
+NOAFFIRM - redo transport service in primary database waits for acknowledgement from standby, that the redo has been RECEIVED by standby RFS process. later, REDO is written to standby redo log files. Default with ASYNC Redo Transport.
+
+--------------------------------
+--------------------------------
+--------------------------------
+--------------------------------

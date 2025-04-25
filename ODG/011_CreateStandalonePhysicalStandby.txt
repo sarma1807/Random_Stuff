@@ -1,0 +1,427 @@
+-- on STANDBY database server
+-- as oracle user :
+
+export ORACLE_UNQNAME=liquid
+export ORACLE_SID=liquid
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/12.1.0/dbHome_1
+
+---------------------------------------
+
+-- startup no mount an instance
+
+[oracle@mgsdr ~]$ sqlplus / as sysdba
+SQL*Plus: Release 12.1.0.2.0 Production on Mon Dec 26 01:11:45 2016
+Copyright (c) 1982, 2014, Oracle.  All rights reserved.
+
+Connected to an idle instance.
+
+
+liquid:SYS@SQL> startup nomount
+ORACLE instance started.
+
+Total System Global Area  218103808 bytes
+Fixed Size                  2922712 bytes
+Variable Size             159385384 bytes
+Database Buffers           50331648 bytes
+Redo Buffers                5464064 bytes
+
+
+liquid:SYS@SQL> exit
+
+
+---------------------------------------
+
+-- start RMAN
+-- connect target to PRIMARY db
+-- connect auxiliary to STANDBY db
+-- tnsnames IN lower-case
+
+$ rman
+
+CONNECT TARGET sys/oracle@solid ;
+CONNECT AUXILIARY sys/oracle@liquid ;
+
+run {
+  allocate channel prdb1 type disk ;
+  allocate channel prdb2 type disk ;
+  allocate channel prdb3 type disk ;
+  allocate channel prdb4 type disk ;
+  
+  allocate auxiliary channel stby1 type disk ;
+  allocate auxiliary channel stby2 type disk ;
+  allocate auxiliary channel stby3 type disk ;
+  allocate auxiliary channel stby4 type disk ;
+
+  DUPLICATE TARGET DATABASE FOR STANDBY FROM ACTIVE DATABASE
+  SPFILE
+  set db_unique_name='liquid'
+  set control_files='+DATADG/LIQUID/control.ctl'
+  set db_create_file_dest='+DATADG'
+  set db_create_online_log_dest_1='+FRADG'
+  set db_create_online_log_dest_2='+DATADG'
+  set db_recovery_file_dest='+FRADG'
+  set DB_RECOVERY_FILE_DEST_SIZE='9G'
+  set audit_file_dest='/u01/app/oracle/admin/liquid/adump'
+  set core_dump_dest='/u01/app/oracle/diag/rdbms/liquid/liquid/cdump'
+  nofilenamecheck ;
+}
+
+---------------------------------------
+
+[oracle@mgsdr ~]$ rman
+
+Recovery Manager: Release 12.1.0.2.0 - Production on Thu Jan 5 10:27:02 2017
+
+Copyright (c) 1982, 2014, Oracle and/or its affiliates.  All rights reserved.
+
+
+-- connect to primary
+RMAN> CONNECT TARGET sys/oracle@solid ;
+
+connected to target database: SOLID (DBID=3579480321)
+
+-- connect to standby
+RMAN> CONNECT AUXILIARY sys/oracle@liquid ;
+
+connected to auxiliary database: LIQUID (not mounted)
+
+run {
+
+  allocate channel prdb1 type disk ;
+  allocate channel prdb2 type disk ;
+  allocate channel prdb3 type disk ;
+  allocate channel prdb4 type disk ;
+
+  allocate auxiliary channel stby1 type disk ;
+  allocate auxiliary channel stby2 type disk ;
+  allocate auxiliary channel stby3 type disk ;
+  allocate auxiliary channel stby4 type disk ;
+11>
+  DUPLICATE TARGET DATABASE FOR STANDBY FROM ACTIVE DATABASE
+  SPFILE
+  set db_unique_name='liquid'
+  set control_files='+DATADG/LIQUID/control.ctl'
+  set db_create_file_dest='+DATADG'
+  set db_create_online_log_dest_1='+FRADG'
+  set db_create_online_log_dest_2='+DATADG'
+  set db_recovery_file_dest='+FRADG'
+  set DB_RECOVERY_FILE_DEST_SIZE='9G'
+  set audit_file_dest='/u01/app/oracle/admin/liquid/adump'
+  set core_dump_dest='/u01/app/oracle/diag/rdbms/liquid/liquid/cdump'
+  nofilenamecheck ;
+24> }
+
+-- allocate 4 channels to primary
+using target database control file instead of recovery catalog
+allocated channel: prdb1
+channel prdb1: SID=87 device type=DISK
+
+allocated channel: prdb2
+channel prdb2: SID=44 device type=DISK
+
+allocated channel: prdb3
+channel prdb3: SID=26 device type=DISK
+
+allocated channel: prdb4
+channel prdb4: SID=28 device type=DISK
+
+-- allocate 4 channels to standby
+allocated channel: stby1
+channel stby1: SID=23 device type=DISK
+
+allocated channel: stby2
+channel stby2: SID=24 device type=DISK
+
+allocated channel: stby3
+channel stby3: SID=25 device type=DISK
+
+allocated channel: stby4
+channel stby4: SID=26 device type=DISK
+
+Starting Duplicate Db at 05-JAN-17
+
+contents of Memory Script:
+{
+   backup as copy reuse
+   targetfile  '/u01/app/oracle/product/12.1.0/dbHome_1/dbs/orapwsolid' auxiliary format
+ '/u01/app/oracle/product/12.1.0/dbHome_1/dbs/orapwliquid'   ;
+   restore clone from service  'solid' spfile to
+ '/u01/app/oracle/product/12.1.0/dbHome_1/dbs/spfileliquid.ora';
+   sql clone "alter system set spfile= ''/u01/app/oracle/product/12.1.0/dbHome_1/dbs/spfileliquid.ora''";
+}
+executing Memory Script
+
+Starting backup at 05-JAN-17
+Finished backup at 05-JAN-17
+
+Starting restore at 05-JAN-17
+
+-- create standby spfile from primary
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service solid
+channel stby1: restoring SPFILE
+output file name=/u01/app/oracle/product/12.1.0/dbHome_1/dbs/spfileliquid.ora
+channel stby1: restore complete, elapsed time: 00:00:02
+Finished restore at 05-JAN-17
+
+sql statement: alter system set spfile= ''/u01/app/oracle/product/12.1.0/dbHome_1/dbs/spfileliquid.ora''
+
+-- alter/set standby init parameters
+contents of Memory Script:
+{
+   sql clone "alter system set  db_unique_name =
+ ''liquid'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  control_files =
+ ''+DATADG/LIQUID/control.ctl'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  db_create_file_dest =
+ ''+DATADG'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  db_create_online_log_dest_1 =
+ ''+FRADG'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  db_create_online_log_dest_2 =
+ ''+DATADG'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  db_recovery_file_dest =
+ ''+FRADG'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  DB_RECOVERY_FILE_DEST_SIZE =
+ 9G comment=
+ '''' scope=spfile";
+   sql clone "alter system set  audit_file_dest =
+ ''/u01/app/oracle/admin/liquid/adump'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  core_dump_dest =
+ ''/u01/app/oracle/diag/rdbms/liquid/liquid/cdump'' comment=
+ '''' scope=spfile";
+   shutdown clone immediate;
+   startup clone nomount;
+}
+executing Memory Script
+
+sql statement: alter system set  db_unique_name =  ''liquid'' comment= '''' scope=spfile
+
+sql statement: alter system set  control_files =  ''+DATADG/LIQUID/control.ctl'' comment= '''' scope=spfile
+
+sql statement: alter system set  db_create_file_dest =  ''+DATADG'' comment= '''' scope=spfile
+
+sql statement: alter system set  db_create_online_log_dest_1 =  ''+FRADG'' comment= '''' scope=spfile
+
+sql statement: alter system set  db_create_online_log_dest_2 =  ''+DATADG'' comment= '''' scope=spfile
+
+sql statement: alter system set  db_recovery_file_dest =  ''+FRADG'' comment= '''' scope=spfile
+
+sql statement: alter system set  DB_RECOVERY_FILE_DEST_SIZE =  9G comment= '''' scope=spfile
+
+sql statement: alter system set  audit_file_dest =  ''/u01/app/oracle/admin/liquid/adump'' comment= '''' scope=spfile
+
+sql statement: alter system set  core_dump_dest =  ''/u01/app/oracle/diag/rdbms/liquid/liquid/cdump'' comment= '''' scope=spfile
+
+Oracle instance shut down
+
+connected to auxiliary database (not started)
+Oracle instance started
+
+Total System Global Area    3238002688 bytes
+
+Fixed Size                     2929600 bytes
+Variable Size               1879051328 bytes
+Database Buffers            1342177280 bytes
+Redo Buffers                  13844480 bytes
+allocated channel: stby1
+channel stby1: SID=25 device type=DISK
+allocated channel: stby2
+channel stby2: SID=28 device type=DISK
+allocated channel: stby3
+channel stby3: SID=29 device type=DISK
+allocated channel: stby4
+channel stby4: SID=30 device type=DISK
+
+-- create standby controlfile from primary
+contents of Memory Script:
+{
+   restore clone from service  'solid' standby controlfile;
+}
+executing Memory Script
+
+Starting restore at 05-JAN-17
+
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service solid
+channel stby1: restoring control file
+channel stby1: restore complete, elapsed time: 00:00:04
+output file name=+DATADG/LIQUID/control.ctl
+Finished restore at 05-JAN-17
+
+-- mount standby database
+contents of Memory Script:
+{
+   sql clone 'alter database mount standby database';
+}
+executing Memory Script
+
+sql statement: alter database mount standby database
+RMAN-05538: WARNING: implicitly using DB_FILE_NAME_CONVERT
+RMAN-05529: WARNING: DB_FILE_NAME_CONVERT resulted in invalid ASM names; names changed to disk group only.
+
+-- DB_FILE_NAME_CONVERT : change +DATA -> +DATADG & +FRA -> +FRADG
+
+contents of Memory Script:
+{
+   set newname for tempfile  1 to
+ "+DATADG";
+   switch clone tempfile all;
+   set newname for datafile  1 to
+ "+DATADG";
+   set newname for datafile  3 to
+ "+DATADG";
+   set newname for datafile  4 to
+ "+DATADG";
+   set newname for datafile  6 to
+ "+DATADG";
+   restore
+   from service  'solid'   clone database
+   ;
+   sql 'alter system archive log current';
+}
+executing Memory Script
+
+executing command: SET NEWNAME
+
+renamed tempfile 1 to +DATADG in control file
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+Starting restore at 05-JAN-17
+
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service solid
+channel stby1: specifying datafile(s) to restore from backup set
+channel stby1: restoring datafile 00001 to +DATADG
+channel stby2: starting datafile backup set restore
+channel stby2: using network backup set from service solid
+channel stby2: specifying datafile(s) to restore from backup set
+channel stby2: restoring datafile 00003 to +DATADG
+channel stby3: starting datafile backup set restore
+channel stby3: using network backup set from service solid
+channel stby3: specifying datafile(s) to restore from backup set
+channel stby3: restoring datafile 00004 to +DATADG
+channel stby4: starting datafile backup set restore
+channel stby4: using network backup set from service solid
+channel stby4: specifying datafile(s) to restore from backup set
+channel stby4: restoring datafile 00006 to +DATADG
+channel stby3: restore complete, elapsed time: 00:01:09
+channel stby1: restore complete, elapsed time: 00:01:21
+channel stby4: restore complete, elapsed time: 00:01:18
+channel stby2: restore complete, elapsed time: 00:01:30
+Finished restore at 05-JAN-17
+
+sql statement: alter system archive log current
+
+contents of Memory Script:
+{
+   switch clone datafile all;
+}
+executing Memory Script
+
+datafile 1 switched to datafile copy
+input datafile copy RECID=5 STAMP=932466619 file name=+DATADG/LIQUID/DATAFILE/system.267.932466531
+datafile 3 switched to datafile copy
+input datafile copy RECID=6 STAMP=932466619 file name=+DATADG/LIQUID/DATAFILE/sysaux.265.932466541
+datafile 4 switched to datafile copy
+input datafile copy RECID=7 STAMP=932466619 file name=+DATADG/LIQUID/DATAFILE/undotbs1.266.932466541
+datafile 6 switched to datafile copy
+input datafile copy RECID=8 STAMP=932466619 file name=+DATADG/LIQUID/DATAFILE/users.264.932466557
+Finished Duplicate Db at 05-JAN-17
+
+-- release all allocated connections/channels
+released channel: prdb1
+released channel: prdb2
+released channel: prdb3
+released channel: prdb4
+released channel: stby1
+released channel: stby2
+released channel: stby3
+released channel: stby4
+
+RMAN>
+
+---------------------------------------
+
+-- on STANDBY database server
+-- as oracle user :
+
+export ORACLE_UNQNAME=liquid
+export ORACLE_SID=liquid
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/12.1.0/dbHome_1
+
+sqlplus / as sysdba
+
+
+column host_name format 'a20'
+SELECT inst_id, name, database_role, open_mode, log_mode FROM gv$database ORDER BY 1 ;
+SELECT inst_id, instance_name, host_name, archiver, logins, blocked FROM gv$instance ORDER BY 1 ;
+
+liquid:SYS@SQL>
+
+   INST_ID NAME      DATABASE_ROLE    OPEN_MODE            LOG_MODE
+---------- --------- ---------------- -------------------- ------------
+         1 SOLID     PHYSICAL STANDBY MOUNTED              ARCHIVELOG
+
+   INST_ID INSTANCE_NAME    HOST_NAME            ARCHIVE LOGINS     BLO
+---------- ---------------- -------------------- ------- ---------- ---
+         1 liquid           mgsdr.localdomain    STARTED ALLOWED    NO
+
+/*
+notice : 
+DATABASE_ROLE = PHYSICAL STANDBY
+*/
+
+column datafile_name format 'a50'
+SELECT file#, name datafile_name FROM v$datafile ORDER BY 1 ;
+
+     FILE# DATAFILE_NAME
+---------- --------------------------------------------------
+         1 +DATADG/LIQUID/DATAFILE/system.273.932900719
+         3 +DATADG/LIQUID/DATAFILE/sysaux.277.932900731
+         4 +DATADG/LIQUID/DATAFILE/undotbs1.276.932900745
+         6 +DATADG/LIQUID/DATAFILE/users.275.932900757
+
+SELECT type, count(distinct group#) groups#, count(distinct member) members# FROM v$logfile GROUP BY type ORDER BY 1, 2 ;
+
+TYPE       GROUPS#   MEMBERS#
+------- ---------- ----------
+ONLINE           3          6
+STANDBY          4          8
+
+
+~~~~~~~~~~~~~~~
+
+
+
+
+
+
+
+
+
+
+
+
+column dg_feature_name format 'a20'
+column dg_feature_info format 'a60'
+
+SELECT name dg_feature_name, version, dbms_lob.substr(feature_info, 200, 1) dg_feature_info
+FROM dba_feature_usage_statistics
+WHERE upper(name) LIKE '%DATA GUARD%' 
+AND currently_used = 'TRUE' ;

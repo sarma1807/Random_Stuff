@@ -1,0 +1,262 @@
+-- Setup initialization parameters on PRIMARY DB :
+
+-- configure DB_UNIQUE_NAME
+
+solid1:SYS@SQL> show parameter DB_UNIQUE_NAME
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+db_unique_name                       string      solid
+
+----------------------------------
+
+-- configure LOG_ARCHIVE_CONFIG
+
+solid1:SYS@SQL> show parameter LOG_ARCHIVE_CONFIG
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_config                   string
+
+
+-- (solid, liquid) = (primary tnsnames entry, standby tnsnames entry) : IN lower-case
+solid1:SYS@SQL> ALTER SYSTEM SET log_archive_config='DG_CONFIG=(solid, liquid)' SCOPE=both SID='*' ;
+
+
+solid1:SYS@SQL> show parameter LOG_ARCHIVE_CONFIG
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_config                   string      DG_CONFIG=(solid, liquid)
+
+----------------------------------
+
+-- configure LOG_ARCHIVE_DEST_2
+-- you can setup upto 8 standby databases using : LOG_ARCHIVE_DEST_2 .. LOG_ARCHIVE_DEST_9
+
+solid1:SYS@SQL> show parameter LOG_ARCHIVE_DEST_2
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_dest_2                   string
+
+
+-- SERVICE = standby tnsnames entry : IN lower-case
+solid1:SYS@SQL> ALTER SYSTEM SET log_archive_dest_2='SERVICE=liquid ASYNC VALID_FOR=(ONLINE_LOGFILES, PRIMARY_ROLE) DB_UNIQUE_NAME=LIQUID' SCOPE=both SID='*' ;
+
+solid1:SYS@SQL> show parameter LOG_ARCHIVE_DEST_2
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_dest_2                   string      SERVICE=liquid ASYNC VALID_FOR=(ONLINE_LOGFILES, PRIMARY_ROLE) DB_UNIQUE_NAME=LIQUID
+
+
+----------------------------------
+
+-- configure ARCHIVE_LAG_TARGET
+
+/*
+ARCHIVE_LAG_TARGET = 0 or any integer in [60 to 7200] SECONDS [all instances in RAC should have same value]
+Forces log switch on PRIMARY DB after the specified amount of seconds, to limit the amount of data loss in STANDBY DB.
+ARCHIVE_LAG_TARGET = 0 is to disable this setting
+ARCHIVE_LAG_TARGET = 1800 (30 minutes) : typical/recommended value
+very LOW values will result in too many log switches - degrade performance & busy archiver.
+*/
+
+solid1:SYS@SQL> show parameter ARCHIVE_LAG_TARGET
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+archive_lag_target                   integer     0
+solid1:SYS@SQL>
+
+
+solid1:SYS@SQL> ALTER SYSTEM SET archive_lag_target=1800 SCOPE=both SID='*' ;
+
+solid1:SYS@SQL> show parameter ARCHIVE_LAG_TARGET
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+archive_lag_target                   integer     1800
+
+
+----------------------------------
+
+-- REMOTE_LOGIN_PASSWORDFILE = should be EXCLUSIVE
+
+solid1:SYS@SQL> show parameter REMOTE_LOGIN_PASSWORDFILE
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+remote_login_passwordfile            string      EXCLUSIVE
+
+
+----------------------------------
+
+/*
+FAL = Fetch Archive Log (whoever is Fetching is FAL_SERVER=STANDBY) : is used to resolve log gap resolution and to retrieve missing logs from PRIMARY DB archive logs
+
+on PRIMARY DB :
+FAL_SERVER : should point to tnsnames entry of STANDBY DB
+FAL_CLIENT : should point to tnsnames entry of PRIMARY DB
+
+on STANDBY DB :
+FAL_SERVER : should point to tnsnames entry of PRIMARY DB
+FAL_CLIENT : should point to tnsnames entry of STANDBY DB
+
+NOTE : THESE PARAMETERS NEED TO BE UPDATED AFTER EVERY SWITCHOVER/FAILOVER
+
+tnsnames entry : IN lower-case
+*/
+
+
+solid1:SYS@SQL> show parameter FAL
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+fal_client                           string
+fal_server                           string
+
+
+ALTER SYSTEM SET fal_server='liquid' SCOPE=both SID='*' ;
+ALTER SYSTEM SET fal_client='solid'  SCOPE=both SID='*' ;
+
+
+solid1:SYS@SQL> show parameter FAL
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+fal_client                           string      solid
+fal_server                           string      liquid
+
+
+----------------------------------
+
+/*
+DB_FILE_NAME_CONVERT is required when PRIMARY DB and STANDBY DB are not using same storage/folder structure.
+DB_FILE_NAME_CONVERT = 'PRIMARY_DBFILE1_PATH','STANDBY_DBFILE1_PATH' , 'PRIMARY_DBFILE2_PATH','STANDBY_DBFILE2_PATH' , ...
+*/
+
+solid:SYS@SQL> show parameter DB_FILE_NAME_CONVERT
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+db_file_name_convert                 string
+pdb_file_name_convert                string
+
+
+ALTER SYSTEM SET db_file_name_convert='+DATA','+DATADG' , '+FRA','+FRADG' SCOPE=spfile SID='*' ;
+
+-- SCOPE=cannot be both - so, save to SPFILE and will require DB INSTANCE restart
+
+
+solid:SYS@SQL> show parameter DB_FILE_NAME_CONVERT
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+db_file_name_convert                 string      +DATA, +DATADG, +FRA, +FRADG
+pdb_file_name_convert                string
+
+
+-- similarly you can set : LOG_FILE_NAME_CONVERT parameter
+
+ALTER SYSTEM SET log_file_name_convert='+DATA','+DATADG' , '+FRA','+FRADG' SCOPE=spfile SID='*' ;
+
+
+----------------------------------
+
+/*
+STANDBY_FILE_MANAGEMENT = { MANUAL | AUTO } : enables/disables automatic standby file management (only applicable to physical standby databases).
+MANUAL : disables automatic standby file management
+AUTO   : enables automatic standby file management. Any DB files created/deleted on PRIMARY DB are replicated automatically on STANDBY DB.
+*/
+
+solid1:SYS@SQL> show parameter STANDBY_FILE_MANAGEMENT
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+standby_file_management              string      MANUAL
+
+
+solid1:SYS@SQL> ALTER SYSTEM SET standby_file_management='AUTO' SCOPE=both SID='*' ;
+
+
+solid1:SYS@SQL> show parameter STANDBY_FILE_MANAGEMENT
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+standby_file_management              string      AUTO
+
+
+----------------------------------
+
+-- make a note of parameters which have hardcoded directory structure
+-- create these directories in the standby server
+
+column name format 'a20'
+column value format 'a60'
+set linesize 100
+SELECT inst_id, name, value FROM gv$parameter WHERE UPPER(value) LIKE UPPER('/%/solid/%') ORDER BY 1, 2 ;
+
+solid1:SYS@SQL> SELECT inst_id, name, value FROM gv$parameter WHERE UPPER(value) LIKE UPPER('/%/solid/%') ORDER BY 1, 2 ;
+
+   INST_ID NAME                 VALUE
+---------- -------------------- ------------------------------------------------------------
+         1 audit_file_dest      /u01/app/oracle/admin/solid/adump
+         1 core_dump_dest       /u01/app/oracle/diag/rdbms/solid/solid1/cdump
+         2 audit_file_dest      /u01/app/oracle/admin/solid/adump
+         2 core_dump_dest       /u01/app/oracle/diag/rdbms/solid/solid2/cdump
+
+
+----------------------------------
+
+/*
+CONTROL_FILE_RECORD_KEEP_TIME parameter specifies the minimum number of days before a reusable record in the control file can be reused. In the event a new record must be added to a reusable section and the oldest record has not aged enough, the record section expands. If this parameter is set to 0, then reusable sections never expand, and records are reused as needed.
+
+Note: This parameter applies only to records in the control file that are circularly reusable (such as archive log records and various backup records). It does not apply to records such as data file, tablespace, and redo thread records, which are never reused unless the corresponding object is dropped from the tablespace.
+
+Default value is 7 days
+*/
+
+
+solid1:SYS@SQL> show parameter CONTROL_FILE_RECORD_KEEP_TIME
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+control_file_record_keep_time        integer     7
+
+
+solid1:SYS@SQL> ALTER SYSTEM SET control_file_record_keep_time=14 SCOPE=both SID='*' ;
+
+
+solid1:SYS@SQL> show parameter CONTROL_FILE_RECORD_KEEP_TIME
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+control_file_record_keep_time        integer     14
+
+
+----------------------------------
+
+/*
+LOG_ARCHIVE_MAX_PROCESSES specifies the maximum number of ARCn processes that can be created. Make sure this parameter is set to 4 or higher.
+
+In Oracle Database 11g Release 1 (11.1), DEFAULT value for this parameter was changed to 4.
+*/
+
+
+solid1:SYS@SQL> show parameter LOG_ARCHIVE_MAX_PROCESSES
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_max_processes            integer     4
+
+
+[oracle@rex1 ~]$ ps -ef | grep -i arc
+oracle    12320      1  0 20:24 ?        00:00:00 ora_arc0_solid1
+oracle    12322      1  0 20:24 ?        00:00:00 ora_arc1_solid1
+oracle    12324      1  0 20:24 ?        00:00:00 ora_arc2_solid1
+oracle    12326      1  0 20:24 ?        00:00:00 ora_arc3_solid1
+
+----------------------------------
+

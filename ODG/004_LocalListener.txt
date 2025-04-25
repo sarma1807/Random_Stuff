@@ -1,0 +1,63 @@
+on primary database :
+
+-- check service_names
+
+SERVICE_NAMES specifies one or more names by which clients can connect to the instance. The instance registers its service names with the listener. When a client requests a service, the listener determines which instances offer the requested service and routes the client to the appropriate instance. You can specify multiple service names to distinguish among different uses of the same database. For example: SERVICE_NAMES = sales.example.com, widgetsales.example.com. You can also use service names to identify a single service that is available from two different databases through the use of replication.
+
+solid:SYS@SQL> show parameter service_names
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+service_names                        string      solid
+
+
+
+
+-- make local_listener = NULL to allow Oracle Database Instance to register dynamically with the local listener.
+
+-- on standalone instance
+
+solid:SYS@SQL> show parameter local_listener
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+local_listener                       string      LISTENER_SOLID
+
+show parameter local_listener
+show parameter service_names
+show parameter domain
+
+-- on RAC instances
+
+solid1:SYS@SQL> show parameter local_listener
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+local_listener                       string       (ADDRESS=(PROTOCOL=TCP)(HOST=192.168.1.176)(PORT=1521))
+
+solid2:SYS@SQL> show parameter local_listener
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+local_listener                       string       (ADDRESS=(PROTOCOL=TCP)(HOST=192.168.1.177)(PORT=1521))
+
+
+-- make local_listener = NULL
+
+solid:SYS@SQL> ALTER SYSTEM SET local_listener='' SCOPE=BOTH SID='*' ;
+
+solid:SYS@SQL> show parameter local_listener
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+local_listener                       string
+
+solid1:SYS@SQL> ALTER SYSTEM REGISTER ;
+
+-- check if instance is registered with local listener
+
+[grid@mgspd ~]$ lsnrctl status listener
+
+Service "solid" has 1 instance(s).
+  Instance "solid", status READY, has 1 handler(s) for this service...
+
