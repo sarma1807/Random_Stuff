@@ -1,0 +1,355 @@
+Oracle Data Guard Prerequisites
+
+Primary and Standby should be running same platform and OS
+Primary and Standby can have hardware differences (number of CPUs/memory/storage)
+Primary and Standby should be running same RDBMS software release/version
+Primary database must be running in ARCHIVELOG mode
+Primary database must be running in FORCE LOGGING mode
+
+It is highly recommended to enable FLASHBACK option in Primary database
+
+--------------------------------
+
+with Data Guard, NOLOGGING/UNRECOVERABLE operations are not allowed.
+
+CREATE/ALTER TABLE OR INDEX ... NOLOGGING
+Direct load with SQL*Loader with NOLOGGING
+INSERT with NOLOGGING
+
+ALTER DATABASE FORCE LOGGING ;
+
+Use this command to put the database into FORCE LOGGING mode. The database must be mounted or open. Database waits for all ongoing unlogged operations to finish.
+
+In FORCE LOGGING mode, Database logs all changes in the database except changes in temporary tablespaces and temporary segments. This setting takes precedence over and is independent of any NOLOGGING or FORCE LOGGING settings you specify for individual tablespaces and any NOLOGGING settings you specify for individual database objects.
+
+--------------------------------
+
+-- on PRIMARY
+
+ORACLE_BASE : /u01/app/oracle
+ORACLE_HOME : /u01/app/oracle/product/18.0.0/dbHome_01
+ORACLE_SID  : cdb001
+------------------------------------------------------------------------------
+--------------------------------
+
+
+Password File : Create a password file if one does not already exist. Every database in a Data Guard configuration must use a password file, and the password for the SYS user must be identical on every system for redo data transmission to succeed.
+
+-- on PRIMARY
+
+$ ls -lh $ORACLE_HOME/dbs/orapw`echo $ORACLE_SID`
+-rw-r----- 1 oracle oinstall 3.5K May  2 12:58 /u01/app/oracle/product/18.0.0/dbHome_01/dbs/orapwcdb001
+
+
+COLUMN username       FORMAT a20
+COLUMN sysdba         FORMAT a9
+COLUMN sysoper        FORMAT a9
+COLUMN sysasm         FORMAT a9
+COLUMN sysbackup      FORMAT a9
+COLUMN sysdg          FORMAT a9
+COLUMN syskm          FORMAT a9
+COLUMN account_status FORMAT a20
+SELECT username, sysdba, sysoper, sysasm, sysbackup, sysdg, syskm, account_status FROM v$pwfile_users ;
+
+USERNAME             SYSDBA    SYSOPER   SYSASM    SYSBACKUP SYSDG     SYSKM     ACCOUNT_STATUS
+-------------------- --------- --------- --------- --------- --------- --------- --------------------
+SYS                  TRUE      TRUE      FALSE     FALSE     FALSE     FALSE     OPEN
+SYSDG                FALSE     FALSE     FALSE     FALSE     TRUE      FALSE     OPEN
+SYSBACKUP            FALSE     FALSE     FALSE     TRUE      FALSE     FALSE     OPEN
+SYSKM                FALSE     FALSE     FALSE     FALSE     FALSE     TRUE      OPEN
+
+4 rows selected.
+
+===========================================================================
+
+-- check RDBMS software release/version
+
+$ $ORACLE_HOME/OPatch/opatch lspatches | grep Database
+28090523;Database Release Update : 18.3.0.0.180717 (28090523)
+$
+
+-- make sure we have same version on STANDBY server
+
+===========================================================================
+
+-- Primary database must be running in ARCHIVELOG mode
+
+-- check database ARCHIVELOG mode
+
+archive log list
+
+cdb001:SYS@SQL> archive log list
+Database log mode              Archive Mode
+Automatic archival             Enabled
+Archive destination            /cdb001/cdb/fra/
+Oldest online log sequence     3
+Next log sequence to archive   5
+Current log sequence           5
+cdb001:SYS@SQL>
+
+
+SELECT DISTINCT name db_name, log_mode archive_log_mode, force_logging FROM gv$database ;
+
+cdb001:SYS@SQL> SELECT DISTINCT name db_name, log_mode archive_log_mode, force_logging FROM gv$database ;
+
+DB_NAME   ARCHIVE_LOG_ FORCE_LOGGING
+--------- ------------ ---------------------------------------
+CDB001    ARCHIVELOG   NO
+
+cdb001:SYS@SQL>
+
+
+===========================================================================
+
+-- change database to NO ARCHIVELOG mode (single instance or RAC uses same method) :
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is running on node rex1
+Instance solid2 is running on node rex2
+
+
+[grid@rex1 ~]$ srvctl stop database -db solid -stopoption IMMEDIATE -force
+-- using SQL : shutdown immediate ;
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is not running on node rex1
+Instance solid2 is not running on node rex2
+
+
+-- on any 1 node of RAC
+[oracle@rex1 ~]$ . oraenv
+ORACLE_SID = [solid1] ?
+The Oracle base remains unchanged with value /u01/app/oracle
+
+[oracle@rex1 ~]$ sqlplus / as sysdba
+SQL*Plus: Release 12.1.0.2.0 Production on Tue Dec 20 16:00:59 2016
+Copyright (c) 1982, 2014, Oracle.  All rights reserved.
+
+Connected to an idle instance.
+
+-- mount the database
+
+solid1:SYS@SQL> startup mount ;
+ORACLE instance started.
+
+Total System Global Area 3238002688 bytes
+Fixed Size                  2929600 bytes
+Variable Size            1946160192 bytes
+Database Buffers         1275068416 bytes
+Redo Buffers               13844480 bytes
+Database mounted.
+
+solid1:SYS@SQL> archive log list ;
+Database log mode              Archive Mode
+Automatic archival             Enabled
+Archive destination            USE_DB_RECOVERY_FILE_DEST
+Oldest online log sequence     13
+Next log sequence to archive   14
+Current log sequence           14
+
+-- database is in ARCHIVELOG mode
+
+solid1:SYS@SQL> alter database noarchivelog ;
+
+solid1:SYS@SQL> archive log list ;
+Database log mode              No Archive Mode
+Automatic archival             Disabled
+Archive destination            USE_DB_RECOVERY_FILE_DEST
+Oldest online log sequence     13
+Current log sequence           14
+
+-- database changed to NO ARCHIVELOG mode
+
+solid1:SYS@SQL> shutdown immediate ;
+ORA-01109: database not open
+Database dismounted.
+ORACLE instance shut down.
+solid1:SYS@SQL> exit
+
+
+-- start database on all nodes
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is not running on node rex1
+Instance solid2 is not running on node rex2
+
+[grid@rex1 ~]$ srvctl start database -database solid
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is running on node rex1
+Instance solid2 is running on node rex2
+
+
+[oracle@rex1 ~]$ sqlplus / as sysdba
+SQL*Plus: Release 12.1.0.2.0 Production on Tue Dec 20 16:41:04 2016
+Copyright (c) 1982, 2014, Oracle.  All rights reserved.
+
+solid1:SYS@SQL> archive log list
+Database log mode              No Archive Mode
+Automatic archival             Disabled
+Archive destination            USE_DB_RECOVERY_FILE_DEST
+Oldest online log sequence     13
+Current log sequence           14
+
+solid1:SYS@SQL> SELECT DISTINCT name db_name, log_mode archive_log_mode, force_logging FROM gv$database ;
+
+DB_NAME   ARCHIVE_LOG_ FORCE_LOGGING
+--------- ------------ ---------------------------------------
+SOLID     NOARCHIVELOG NO
+
+
+-- database changed to NO ARCHIVELOG mode
+
+===========================================================================
+
+-- change database to ARCHIVELOG mode (single instance or RAC uses same method) :
+
+-- configure log_archive_format
+-- ALTER SYSTEM SET log_archive_format='arch_%t_%s_%r.arc' SCOPE=spfile SID='*' ;
+
+solid1:SYS@SQL> show parameter log_archive_format
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_format                   string      %t_%s_%r.dbf
+
+
+-- configure log_archive_dest_1 : if not set, archive logs will go to FRA
+-- ALTER SYSTEM SET log_archive_dest_1='location=/u04/oradata/archive/' SCOPE=spfile SID='*' ;
+-- ALTER SYSTEM SET log_archive_dest_1='location=+FRA_DG' SCOPE=spfile SID='*' ;
+
+solid1:SYS@SQL> show parameter log_archive_dest_1
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_dest_1                   string
+
+
+-- check FRA configuration
+
+solid1:SYS@SQL> show parameter db_recovery_file
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+db_recovery_file_dest                string      +FRA
+db_recovery_file_dest_size           big integer 9G
+
+
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is running on node rex1
+Instance solid2 is running on node rex2
+
+
+[grid@rex1 ~]$ srvctl stop database -db solid -stopoption IMMEDIATE -force
+-- using SQL : shutdown immediate ;
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is not running on node rex1
+Instance solid2 is not running on node rex2
+
+
+-- on any 1 node of RAC
+[oracle@rex1 ~]$ sqlplus / as sysdba
+SQL*Plus: Release 12.1.0.2.0 Production on Tue Dec 20 17:39:13 2016
+Copyright (c) 1982, 2014, Oracle.  All rights reserved.
+
+Connected to an idle instance.
+
+-- mount the database
+
+solid1:SYS@SQL> startup mount ;
+ORACLE instance started.
+
+Total System Global Area 3238002688 bytes
+Fixed Size                  2929600 bytes
+Variable Size            1946160192 bytes
+Database Buffers         1275068416 bytes
+Redo Buffers               13844480 bytes
+Database mounted.
+
+-- database is in NO ARCHIVELOG mode
+
+solid1:SYS@SQL> archive log list ;
+Database log mode              No Archive Mode
+Automatic archival             Disabled
+Archive destination            USE_DB_RECOVERY_FILE_DEST
+Oldest online log sequence     13
+Current log sequence           14
+
+solid1:SYS@SQL> alter database archivelog ;
+
+solid1:SYS@SQL> archive log list ;
+Database log mode              Archive Mode
+Automatic archival             Enabled
+Archive destination            USE_DB_RECOVERY_FILE_DEST
+Oldest online log sequence     13
+Next log sequence to archive   14
+Current log sequence           14
+
+-- database changed to ARCHIVELOG mode
+
+solid1:SYS@SQL> shutdown immediate ;
+ORA-01109: database not open
+Database dismounted.
+ORACLE instance shut down.
+solid1:SYS@SQL> exit
+
+
+-- start database on all nodes
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is not running on node rex1
+Instance solid2 is not running on node rex2
+
+[grid@rex1 ~]$ srvctl start database -database solid
+
+[grid@rex1 ~]$ srvctl status database -database solid
+Instance solid1 is running on node rex1
+Instance solid2 is running on node rex2
+
+
+
+[oracle@rex1 ~]$ sqlplus / as sysdba
+SQL*Plus: Release 12.1.0.2.0 Production on Tue Dec 20 17:42:40 2016
+Copyright (c) 1982, 2014, Oracle.  All rights reserved.
+
+solid1:SYS@SQL> archive log list
+Database log mode              Archive Mode
+Automatic archival             Enabled
+Archive destination            USE_DB_RECOVERY_FILE_DEST
+Oldest online log sequence     13
+Next log sequence to archive   14
+Current log sequence           14
+
+solid1:SYS@SQL> SELECT DISTINCT name db_name, log_mode archive_log_mode, force_logging FROM gv$database ;
+
+DB_NAME   ARCHIVE_LOG_ FORCE_LOGGING
+--------- ------------ ---------------------------------------
+SOLID     ARCHIVELOG   NO
+
+-- database changed to ARCHIVELOG mode
+
+===========================================================================
+
+-- change database to run in FORCE LOGGING mode :
+
+solid1:SYS@SQL> SELECT DISTINCT name db_name, log_mode archive_log_mode, force_logging FROM gv$database ;
+
+DB_NAME   ARCHIVE_LOG_ FORCE_LOGGING
+--------- ------------ ---------------------------------------
+SOLID     ARCHIVELOG   NO
+
+
+solid1:SYS@SQL> ALTER DATABASE FORCE LOGGING ;
+
+
+solid1:SYS@SQL> SELECT DISTINCT name db_name, log_mode archive_log_mode, force_logging FROM gv$database ;
+
+DB_NAME   ARCHIVE_LOG_ FORCE_LOGGING
+--------- ------------ ---------------------------------------
+SOLID     ARCHIVELOG   YES
+
+===========================================================================
+===========================================================================
+===========================================================================

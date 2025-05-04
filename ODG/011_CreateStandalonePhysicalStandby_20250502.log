@@ -1,0 +1,585 @@
+
+
+[oracle@ora2a dbs]$ pwd
+/u01/app/oracle/product/18.0.0/dbHome_01/dbs
+
+[oracle@ora2a dbs]$ l
+total 12K
+-rw-r--r-- 1 oracle oinstall   15 May  2 19:50 initcdr001.ora
+-rw-r--r-- 1 oracle oinstall 3.1K May 14  2015 init.ora
+-rw-r----- 1 oracle oinstall 3.5K May  3 15:17 orapwcdr001
+
+[oracle@ora2a dbs]$ cat initcdr001.ora
+DB_NAME=cdr001
+
+[oracle@ora2a dbs]$ echo -e "ORACLE_BASE : $ORACLE_BASE"
+ORACLE_BASE : /u01/app/oracle
+
+[oracle@ora2a dbs]$ echo -e "ORACLE_HOME : $ORACLE_HOME"
+ORACLE_HOME : /u01/app/oracle/product/18.0.0/dbHome_01
+
+[oracle@ora2a dbs]$ echo -e "ORACLE_SID  : $ORACLE_SID"
+ORACLE_SID  : cdr001
+
+[oracle@ora2a dbs]$ sqlplus / as sysdba
+
+SQL*Plus: Release 18.0.0.0.0 - Production on Sat May 3 15:49:19 2025
+Version 18.3.0.0.0
+
+Copyright (c) 1982, 2018, Oracle.  All rights reserved.
+
+Connected to an idle instance.
+
+cdr001:SYS@SQL> startup nomount
+ORACLE instance started.
+
+Total System Global Area  272627400 bytes
+Fixed Size                  8656584 bytes
+Variable Size             209715200 bytes
+Database Buffers           50331648 bytes
+Redo Buffers                3923968 bytes
+cdr001:SYS@SQL> exit
+Disconnected from Oracle Database 18c Enterprise Edition Release 18.0.0.0.0 - Production
+Version 18.3.0.0.0
+
+[oracle@ora2a dbs]$ export NLS_DATE_FORMAT="DD-MON-YYYY HH24:MI:SS"
+
+[oracle@ora2a dbs]$ rman TARGET sys/oracle@cdb001 AUXILIARY sys/oracle@cdr001
+
+Recovery Manager: Release 18.0.0.0.0 - Production on Sat May 3 15:49:45 2025
+Version 18.3.0.0.0
+
+Copyright (c) 1982, 2018, Oracle and/or its affiliates.  All rights reserved.
+
+connected to target database: CDB001 (DBID=219195144)
+connected to auxiliary database: CDR001 (not mounted)
+
+run {
+  allocate channel prdb1 type disk ;
+  allocate channel prdb2 type disk ;
+  allocate channel prdb3 type disk ;
+  allocate channel prdb4 type disk ;
+6>
+  allocate auxiliary channel stby1 type disk ;
+  allocate auxiliary channel stby2 type disk ;
+  allocate auxiliary channel stby3 type disk ;
+  allocate auxiliary channel stby4 type disk ;
+11>
+  DUPLICATE TARGET DATABASE FOR STANDBY FROM ACTIVE DATABASE
+  db_file_name_convert('/cdb001/cdb/data1/CDB001/', '+DATA1/CDR001/','/cdb001/cdb/data1/CDB001/pdbseed/', '+DATA1/CDR001/pdbseed/','/cdb001/cdb/data2/CDB001/', '+DATA2/CDR001/','/cdb001/pdb001/data1/', '+DATA1/CDR001/pdb001/','/cdb001/pdb001/data2/', '+DATA2/CDR001/pdb001/','/cdb001/cdb/fra/CDB001/', '+FRA/CDR001/')
+  SPFILE
+    set db_unique_name='cdr001'
+    set control_files='+DATA1/CDR001/control01.ctl', '+DATA2/CDR001/control01.ctl'
+    set db_recovery_file_dest='+FRA'
+    set db_recovery_file_dest_size='20G'
+    set log_archive_dest_1='location=+FRA/CDR001/archivelogs/'
+    set log_archive_format='arch_%t_%s_%r.arc'
+    set db_create_file_dest='+DATA2'
+    set audit_file_dest='/u01/app/oracle/admin/cdr001/adump'
+    set core_dump_dest='/u01/app/oracle/diag/rdbms/cdr001/cdr001/cdump'
+  nofilenamecheck ;
+25> }
+
+using target database control file instead of recovery catalog
+allocated channel: prdb1
+channel prdb1: SID=92 device type=DISK
+
+allocated channel: prdb2
+channel prdb2: SID=71 device type=DISK
+
+allocated channel: prdb3
+channel prdb3: SID=101 device type=DISK
+
+allocated channel: prdb4
+channel prdb4: SID=64 device type=DISK
+
+allocated channel: stby1
+channel stby1: SID=49 device type=DISK
+
+allocated channel: stby2
+channel stby2: SID=50 device type=DISK
+
+allocated channel: stby3
+channel stby3: SID=51 device type=DISK
+
+allocated channel: stby4
+channel stby4: SID=52 device type=DISK
+
+Starting Duplicate Db at 03-MAY-2025 15:50:06
+
+contents of Memory Script:
+{
+   backup as copy reuse
+   passwordfile auxiliary format  '/u01/app/oracle/product/18.0.0/dbHome_01/dbs/orapwcdr001'   ;
+   restore clone from service  'cdb001' spfile to
+ '/u01/app/oracle/product/18.0.0/dbHome_01/dbs/spfilecdr001.ora';
+   sql clone "alter system set spfile= ''/u01/app/oracle/product/18.0.0/dbHome_01/dbs/spfilecdr001.ora''";
+}
+executing Memory Script
+
+Starting backup at 03-MAY-2025 15:50:06
+Finished backup at 03-MAY-2025 15:50:07
+
+Starting restore at 03-MAY-2025 15:50:07
+
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service cdb001
+channel stby1: restoring SPFILE
+output file name=/u01/app/oracle/product/18.0.0/dbHome_01/dbs/spfilecdr001.ora
+channel stby1: restore complete, elapsed time: 00:00:01
+Finished restore at 03-MAY-2025 15:50:10
+
+sql statement: alter system set spfile= ''/u01/app/oracle/product/18.0.0/dbHome_01/dbs/spfilecdr001.ora''
+
+contents of Memory Script:
+{
+   sql clone "alter system set  db_unique_name =
+ ''cdr001'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  control_files =
+ ''+DATA1/CDR001/control01.ctl'', ''+DATA2/CDR001/control01.ctl'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  db_recovery_file_dest =
+ ''+FRA'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  db_recovery_file_dest_size =
+ 20G comment=
+ '''' scope=spfile";
+   sql clone "alter system set  log_archive_dest_1 =
+ ''location=+FRA/CDR001/archivelogs/'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  log_archive_format =
+ ''arch_%t_%s_%r.arc'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  db_create_file_dest =
+ ''+DATA2'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  audit_file_dest =
+ ''/u01/app/oracle/admin/cdr001/adump'' comment=
+ '''' scope=spfile";
+   sql clone "alter system set  core_dump_dest =
+ ''/u01/app/oracle/diag/rdbms/cdr001/cdr001/cdump'' comment=
+ '''' scope=spfile";
+   shutdown clone immediate;
+   startup clone nomount;
+}
+executing Memory Script
+
+sql statement: alter system set  db_unique_name =  ''cdr001'' comment= '''' scope=spfile
+
+sql statement: alter system set  control_files =  ''+DATA1/CDR001/control01.ctl'', ''+DATA2/CDR001/control01.ctl'' comment= '''' scope=spfile
+
+sql statement: alter system set  db_recovery_file_dest =  ''+FRA'' comment= '''' scope=spfile
+
+sql statement: alter system set  db_recovery_file_dest_size =  20G comment= '''' scope=spfile
+
+sql statement: alter system set  log_archive_dest_1 =  ''location=+FRA/CDR001/archivelogs/'' comment= '''' scope=spfile
+
+sql statement: alter system set  log_archive_format =  ''arch_%t_%s_%r.arc'' comment= '''' scope=spfile
+
+sql statement: alter system set  db_create_file_dest =  ''+DATA2'' comment= '''' scope=spfile
+
+sql statement: alter system set  audit_file_dest =  ''/u01/app/oracle/admin/cdr001/adump'' comment= '''' scope=spfile
+
+sql statement: alter system set  core_dump_dest =  ''/u01/app/oracle/diag/rdbms/cdr001/cdr001/cdump'' comment= '''' scope=spfile
+
+Oracle instance shut down
+
+connected to auxiliary database (not started)
+Oracle instance started
+
+Total System Global Area    2415917288 bytes
+
+Fixed Size                     8898792 bytes
+Variable Size                654311424 bytes
+Database Buffers            1744830464 bytes
+Redo Buffers                   7876608 bytes
+allocated channel: stby1
+channel stby1: SID=54 device type=DISK
+allocated channel: stby2
+channel stby2: SID=55 device type=DISK
+allocated channel: stby3
+channel stby3: SID=56 device type=DISK
+allocated channel: stby4
+channel stby4: SID=57 device type=DISK
+
+contents of Memory Script:
+{
+   restore clone from service  'cdb001' standby controlfile;
+}
+executing Memory Script
+
+Starting restore at 03-MAY-2025 15:50:55
+
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service cdb001
+channel stby1: restoring control file
+channel stby1: restore complete, elapsed time: 00:00:03
+output file name=+DATA1/CDR001/control01.ctl
+output file name=+DATA2/CDR001/control01.ctl
+Finished restore at 03-MAY-2025 15:51:00
+
+contents of Memory Script:
+{
+   sql clone 'alter database mount standby database';
+}
+executing Memory Script
+
+sql statement: alter database mount standby database
+
+contents of Memory Script:
+{
+   set newname for tempfile  1 to
+ "+DATA1/CDR001/temp01.dbf";
+   set newname for tempfile  2 to
+ "+DATA1/CDR001/pdbseed/temp012025-05-02_12-54-20-260-pm.dbf";
+   set newname for tempfile  3 to
+ "+DATA1/CDR001/pdb001/tempfile01.dbf";
+   switch clone tempfile all;
+   set newname for datafile  1 to
+ "+DATA1/CDR001/system01.dbf";
+   set newname for datafile  3 to
+ "+DATA1/CDR001/sysaux01.dbf";
+   set newname for datafile  4 to
+ "+DATA1/CDR001/undotbs01.dbf";
+   set newname for datafile  5 to
+ "+DATA1/CDR001/pdbseed/system01.dbf";
+   set newname for datafile  6 to
+ "+DATA1/CDR001/pdbseed/sysaux01.dbf";
+   set newname for datafile  7 to
+ "+DATA1/CDR001/users01.dbf";
+   set newname for datafile  8 to
+ "+DATA1/CDR001/pdbseed/undotbs01.dbf";
+   set newname for datafile  12 to
+ "+DATA1/CDR001/pdb001/system01.dbf";
+   set newname for datafile  13 to
+ "+DATA1/CDR001/pdb001/sysaux01.dbf";
+   set newname for datafile  14 to
+ "+DATA1/CDR001/pdb001/undotbs01.dbf";
+   set newname for datafile  15 to
+ "+DATA2/CDR001/app_data_01.dbf";
+   set newname for datafile  16 to
+ "+DATA2/CDR001/pdb001/pdb_app_data_01.dbf";
+   restore
+   from  nonsparse   from service
+ 'cdb001'   clone database
+   ;
+   sql 'alter system archive log current';
+}
+executing Memory Script
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+renamed tempfile 1 to +DATA1/CDR001/temp01.dbf in control file
+renamed tempfile 2 to +DATA1/CDR001/pdbseed/temp012025-05-02_12-54-20-260-pm.dbf in control file
+renamed tempfile 3 to +DATA1/CDR001/pdb001/tempfile01.dbf in control file
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+executing command: SET NEWNAME
+
+Starting restore at 03-MAY-2025 15:51:06
+
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service cdb001
+channel stby1: specifying datafile(s) to restore from backup set
+channel stby1: restoring datafile 00001 to +DATA1/CDR001/system01.dbf
+channel stby2: starting datafile backup set restore
+channel stby2: using network backup set from service cdb001
+channel stby2: specifying datafile(s) to restore from backup set
+channel stby2: restoring datafile 00003 to +DATA1/CDR001/sysaux01.dbf
+channel stby3: starting datafile backup set restore
+channel stby3: using network backup set from service cdb001
+channel stby3: specifying datafile(s) to restore from backup set
+channel stby3: restoring datafile 00004 to +DATA1/CDR001/undotbs01.dbf
+channel stby4: starting datafile backup set restore
+channel stby4: using network backup set from service cdb001
+channel stby4: specifying datafile(s) to restore from backup set
+channel stby4: restoring datafile 00005 to +DATA1/CDR001/pdbseed/system01.dbf
+channel stby1: restore complete, elapsed time: 00:00:26
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service cdb001
+channel stby1: specifying datafile(s) to restore from backup set
+channel stby1: restoring datafile 00006 to +DATA1/CDR001/pdbseed/sysaux01.dbf
+channel stby2: restore complete, elapsed time: 00:00:26
+channel stby2: starting datafile backup set restore
+channel stby2: using network backup set from service cdb001
+channel stby2: specifying datafile(s) to restore from backup set
+channel stby2: restoring datafile 00007 to +DATA1/CDR001/users01.dbf
+channel stby3: restore complete, elapsed time: 00:00:26
+channel stby3: starting datafile backup set restore
+channel stby3: using network backup set from service cdb001
+channel stby3: specifying datafile(s) to restore from backup set
+channel stby3: restoring datafile 00008 to +DATA1/CDR001/pdbseed/undotbs01.dbf
+channel stby4: restore complete, elapsed time: 00:00:27
+channel stby4: starting datafile backup set restore
+channel stby4: using network backup set from service cdb001
+channel stby4: specifying datafile(s) to restore from backup set
+channel stby4: restoring datafile 00012 to +DATA1/CDR001/pdb001/system01.dbf
+channel stby2: restore complete, elapsed time: 00:00:01
+channel stby2: starting datafile backup set restore
+channel stby2: using network backup set from service cdb001
+channel stby2: specifying datafile(s) to restore from backup set
+channel stby2: restoring datafile 00013 to +DATA1/CDR001/pdb001/sysaux01.dbf
+channel stby3: restore complete, elapsed time: 00:00:05
+channel stby3: starting datafile backup set restore
+channel stby3: using network backup set from service cdb001
+channel stby3: specifying datafile(s) to restore from backup set
+channel stby3: restoring datafile 00014 to +DATA1/CDR001/pdb001/undotbs01.dbf
+channel stby1: restore complete, elapsed time: 00:00:16
+channel stby1: starting datafile backup set restore
+channel stby1: using network backup set from service cdb001
+channel stby1: specifying datafile(s) to restore from backup set
+channel stby1: restoring datafile 00015 to +DATA2/CDR001/app_data_01.dbf
+channel stby2: restore complete, elapsed time: 00:00:15
+channel stby2: starting datafile backup set restore
+channel stby2: using network backup set from service cdb001
+channel stby2: specifying datafile(s) to restore from backup set
+channel stby2: restoring datafile 00016 to +DATA2/CDR001/pdb001/pdb_app_data_01.dbf
+channel stby3: restore complete, elapsed time: 00:00:11
+channel stby4: restore complete, elapsed time: 00:00:15
+channel stby1: restore complete, elapsed time: 00:00:03
+channel stby2: restore complete, elapsed time: 00:00:03
+Finished restore at 03-MAY-2025 15:51:51
+
+sql statement: alter system archive log current
+
+contents of Memory Script:
+{
+   switch clone datafile all;
+}
+executing Memory Script
+
+datafile 1 switched to datafile copy
+input datafile copy RECID=16 STAMP=1200153112 file name=+DATA1/CDR001/system01.dbf
+datafile 3 switched to datafile copy
+input datafile copy RECID=17 STAMP=1200153112 file name=+DATA1/CDR001/sysaux01.dbf
+datafile 4 switched to datafile copy
+input datafile copy RECID=18 STAMP=1200153112 file name=+DATA1/CDR001/undotbs01.dbf
+datafile 5 switched to datafile copy
+input datafile copy RECID=19 STAMP=1200153112 file name=+DATA1/CDR001/pdbseed/system01.dbf
+datafile 6 switched to datafile copy
+input datafile copy RECID=20 STAMP=1200153112 file name=+DATA1/CDR001/pdbseed/sysaux01.dbf
+datafile 7 switched to datafile copy
+input datafile copy RECID=21 STAMP=1200153112 file name=+DATA1/CDR001/users01.dbf
+datafile 8 switched to datafile copy
+input datafile copy RECID=22 STAMP=1200153112 file name=+DATA1/CDR001/pdbseed/undotbs01.dbf
+datafile 12 switched to datafile copy
+input datafile copy RECID=23 STAMP=1200153112 file name=+DATA1/CDR001/pdb001/system01.dbf
+datafile 13 switched to datafile copy
+input datafile copy RECID=24 STAMP=1200153112 file name=+DATA1/CDR001/pdb001/sysaux01.dbf
+datafile 14 switched to datafile copy
+input datafile copy RECID=25 STAMP=1200153112 file name=+DATA1/CDR001/pdb001/undotbs01.dbf
+datafile 15 switched to datafile copy
+input datafile copy RECID=26 STAMP=1200153112 file name=+DATA2/CDR001/app_data_01.dbf
+datafile 16 switched to datafile copy
+input datafile copy RECID=27 STAMP=1200153112 file name=+DATA2/CDR001/pdb001/pdb_app_data_01.dbf
+Finished Duplicate Db at 03-MAY-2025 15:52:03
+released channel: prdb1
+released channel: prdb2
+released channel: prdb3
+released channel: prdb4
+released channel: stby1
+released channel: stby2
+released channel: stby3
+released channel: stby4
+
+RMAN> exit
+
+
+Recovery Manager complete.
+
+[oracle@ora2a dbs]$ sqlplus / as sysdba
+
+SQL*Plus: Release 18.0.0.0.0 - Production on Sat May 3 15:52:23 2025
+Version 18.3.0.0.0
+
+Copyright (c) 1982, 2018, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 18c Enterprise Edition Release 18.0.0.0.0 - Production
+Version 18.3.0.0.0
+
+COLUMN host_name FORMAT a30
+COLUMN archiver  FORMAT a10
+COLUMN blocked   FORMAT a10
+SELECT inst_id, name, database_role, open_mode, log_mode FROM gv$database ORDER BY 1 ;
+
+   INST_ID NAME      DATABASE_ROLE    OPEN_MODE            LOG_MODE
+---------- --------- ---------------- -------------------- ------------
+         1 CDB001    PHYSICAL STANDBY MOUNTED              ARCHIVELOG
+
+1 row selected.
+
+Elapsed: 00:00:00.02
+cdr001:SYS@SQL> SELECT inst_id, instance_name, host_name, archiver, logins, blocked FROM gv$instance ORDER BY 1 ;
+
+   INST_ID INSTANCE_NAME    HOST_NAME                      ARCHIVER   LOGINS     BLOCKED
+---------- ---------------- ------------------------------ ---------- ---------- ----------
+         1 cdr001           ora2a.OracleByExample.com      STARTED    ALLOWED    NO
+
+1 row selected.
+
+Elapsed: 00:00:00.00
+cdr001:SYS@SQL> alter database open read only ;
+alter database open read only
+*
+ERROR at line 1:
+ORA-10458: standby database requires recovery
+ORA-01152: file 1 was not restored from a sufficiently old backup
+ORA-01110: data file 1: '+DATA1/CDR001/system01.dbf'
+
+
+Elapsed: 00:01:05.87
+COLUMN host_name FORMAT a30
+COLUMN archiver  FORMAT a10
+COLUMN blocked   FORMAT a10
+SELECT inst_id, name, database_role, open_mode, log_mode FROM gv$database ORDER BY 1 ;
+
+   INST_ID NAME      DATABASE_ROLE    OPEN_MODE            LOG_MODE
+---------- --------- ---------------- -------------------- ------------
+         1 CDB001    PHYSICAL STANDBY MOUNTED              ARCHIVELOG
+
+1 row selected.
+
+Elapsed: 00:00:00.01
+cdr001:SYS@SQL> SELECT inst_id, instance_name, host_name, archiver, logins, blocked FROM gv$instance ORDER BY 1 ;
+
+   INST_ID INSTANCE_NAME    HOST_NAME                      ARCHIVER   LOGINS     BLOCKED
+---------- ---------------- ------------------------------ ---------- ---------- ----------
+         1 cdr001           ora2a.OracleByExample.com      STARTED    ALLOWED    NO
+
+1 row selected.
+
+Elapsed: 00:00:00.00
+cdr001:SYS@SQL> ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT FROM SESSION ;
+
+Database altered.
+
+Elapsed: 00:00:06.03
+cdr001:SYS@SQL> SELECT process, status, thread#, sequence# FROM v$managed_standby WHERE upper(process) LIKE 'MRP%' OR upper(process) LIKE 'RFS%' ;
+
+PROCESS   STATUS          THREAD#  SEQUENCE#
+--------- ------------ ---------- ----------
+RFS       IDLE                  1          0
+RFS       IDLE                  1         55
+RFS       IDLE                  0          0
+MRP0      WAIT_FOR_LOG          1         55
+
+4 rows selected.
+
+Elapsed: 00:00:00.01
+cdr001:SYS@SQL> r
+  1* SELECT process, status, thread#, sequence# FROM v$managed_standby WHERE upper(process) LIKE 'MRP%' OR upper(process) LIKE 'RFS%'
+
+PROCESS   STATUS          THREAD#  SEQUENCE#
+--------- ------------ ---------- ----------
+RFS       IDLE                  1          0
+RFS       IDLE                  1         55
+RFS       IDLE                  0          0
+MRP0      WAIT_FOR_LOG          1         55
+
+4 rows selected.
+
+Elapsed: 00:00:00.01
+-- following query to check the log gap : can be executed on PRIMARY or STANDBY
+cdr001:SYS@SQL>
+SELECT a.thread#, a.applied_sequence#, b.not_applied_sequence#, (b.not_applied_sequence# - a.applied_sequence#) delta FROM
+(SELECT thread#, max(sequence#) applied_sequence#     FROM v$archived_log WHERE applied='YES' GROUP BY thread#) a,
+(SELECT thread#, max(sequence#) not_applied_sequence# FROM v$archived_log GROUP BY thread#) b
+WHERE a.thread# = b.thread#
+  5  ORDER BY 1 ;
+
+   THREAD# APPLIED_SEQUENCE# NOT_APPLIED_SEQUENCE#      DELTA
+---------- ----------------- --------------------- ----------
+         1                54                    54          0
+
+1 row selected.
+
+Elapsed: 00:00:00.01
+cdr001:SYS@SQL> shutdown immediate ;
+ORA-01109: database not open
+
+
+Database dismounted.
+ORACLE instance shut down.
+cdr001:SYS@SQL> startup mount ;
+ORACLE instance started.
+
+Total System Global Area 2415917288 bytes
+Fixed Size                  8898792 bytes
+Variable Size             654311424 bytes
+Database Buffers         1744830464 bytes
+Redo Buffers                7876608 bytes
+Database mounted.
+cdr001:SYS@SQL> alter database open read only ;
+
+Database altered.
+
+Elapsed: 00:00:10.29
+cdr001:SYS@SQL> ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT FROM SESSION ;
+
+Database altered.
+
+Elapsed: 00:00:06.04
+
+cdr001:SYS@SQL>
+COLUMN dg_feature_name FORMAT a20
+COLUMN dg_feature_info FORMAT a60
+cdr001:SYS@SQL>
+SELECT name dg_feature_name, version, dbms_lob.substr(feature_info, 200, 1) dg_feature_info
+FROM dba_feature_usage_statistics
+WHERE upper(name) LIKE '%DATA GUARD%'
+  4  AND currently_used = 'TRUE' ;
+
+no rows selected
+
+Elapsed: 00:00:00.24
+cdr001:SYS@SQL> SELECT process, status, thread#, sequence# FROM v$managed_standby WHERE upper(process) LIKE 'MRP%' OR upper(process) LIKE 'RFS%' ;
+
+PROCESS   STATUS          THREAD#  SEQUENCE#
+--------- ------------ ---------- ----------
+MRP0      WAIT_FOR_LOG          1         55
+
+1 row selected.
+
+Elapsed: 00:00:00.02
+SELECT a.thread#, a.applied_sequence#, b.not_applied_sequence#, (b.not_applied_sequence# - a.applied_sequence#) delta FROM
+(SELECT thread#, max(sequence#) applied_sequence#     FROM v$archived_log WHERE applied='YES' GROUP BY thread#) a,
+(SELECT thread#, max(sequence#) not_applied_sequence# FROM v$archived_log GROUP BY thread#) b
+WHERE a.thread# = b.thread#
+  5  ORDER BY 1 ;
+
+   THREAD# APPLIED_SEQUENCE# NOT_APPLIED_SEQUENCE#      DELTA
+---------- ----------------- --------------------- ----------
+         1                54                    54          0
+
+1 row selected.
+
+Elapsed: 00:00:00.11
+cdr001:SYS@SQL>

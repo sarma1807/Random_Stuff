@@ -1,0 +1,264 @@
+---------------------------------------
+
+-- on STANDBY
+
+export ORACLE_BASE=/u01/app/oracle
+
+mkdir -p $ORACLE_BASE/admin/cdr001/adump
+mkdir -p $ORACLE_BASE/diag/rdbms/cdr001/cdr001/cdump
+
+
+-- as grid user
+asmcmd rm -f +DATA1/CDR001/pdbseed/*.*
+asmcmd rm -f +DATA1/CDR001/pdb001/*.*
+asmcmd rm -f +DATA1/CDR001/*.*
+asmcmd rm -f +DATA2/CDR001/pdb001/*.*
+asmcmd rm -f +DATA2/CDR001/*.*
+asmcmd rm -f +FRA/CDR001/archivelogs/*.*
+asmcmd rm -f +FRA/CDR001/*.*
+
+asmcmd mkdir +DATA1/CDR001/
+asmcmd mkdir +DATA1/CDR001/pdbseed/
+asmcmd mkdir +DATA2/CDR001/
+asmcmd mkdir +DATA1/CDR001/pdb001/
+asmcmd mkdir +DATA2/CDR001/pdb001/
+asmcmd mkdir +FRA/CDR001/
+asmcmd mkdir +FRA/CDR001/archivelogs/
+
+asmcmd ls +DATA1/CDR001/
+asmcmd ls +DATA1/CDR001/pdbseed/
+asmcmd ls +DATA2/CDR001/
+asmcmd ls +DATA1/CDR001/pdb001/
+asmcmd ls +DATA2/CDR001/pdb001/
+asmcmd ls +FRA/CDR001/
+asmcmd ls +FRA/CDR001/archivelogs/
+asmcmd ls +DATA1/
+asmcmd ls +DATA2/
+asmcmd ls +FRA/
+
+---------------------------------------
+---------------------------------------
+-- on STANDBY database server
+-- as oracle user :
+
+export ORACLE_SID=cdr001
+export ORACLE_UNQNAME=cdb001
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/18.0.0/dbHome_01
+
+echo -e "ORACLE_BASE : $ORACLE_BASE"
+echo -e "ORACLE_HOME : $ORACLE_HOME"
+echo -e "ORACLE_SID  : $ORACLE_SID"
+
+---------------------------------------
+
+-- startup no mount an instance
+
+sqlplus / as sysdba
+Connected to an idle instance.
+
+startup nomount
+exit
+
+
+---------------------------------------
+
+
+-- as oracle user
+
+-- start RMAN
+-- connect target to PRIMARY db
+-- connect auxiliary to STANDBY db
+-- tnsnames IN lower-case
+
+
+# set date time format for RMAN logs
+export NLS_DATE_FORMAT="DD-MON-YYYY HH24:MI:SS"
+
+
+rman TARGET sys/oracle@cdb001 AUXILIARY sys/oracle@cdr001
+
+connected to target database: CDB001 (DBID=219195144)
+connected to auxiliary database: CDR001 (not mounted)
+RMAN>
+
+run {
+  allocate channel prdb1 type disk ;
+  allocate channel prdb2 type disk ;
+  allocate channel prdb3 type disk ;
+  allocate channel prdb4 type disk ;
+
+  allocate auxiliary channel stby1 type disk ;
+  allocate auxiliary channel stby2 type disk ;
+  allocate auxiliary channel stby3 type disk ;
+  allocate auxiliary channel stby4 type disk ;
+
+  DUPLICATE TARGET DATABASE FOR STANDBY FROM ACTIVE DATABASE
+  db_file_name_convert=('/cdb001/cdb/data1/CDB001/', '+DATA1/CDR001/','/cdb001/cdb/data1/CDB001/pdbseed/', '+DATA1/CDR001/pdbseed/','/cdb001/cdb/data2/CDB001/', '+DATA2/CDR001/','/cdb001/pdb001/data1/', '+DATA1/CDR001/pdb001/','/cdb001/pdb001/data2/', '+DATA2/CDR001/pdb001/','/cdb001/cdb/fra/CDB001/', '+FRA/CDR001/')
+  SPFILE
+    set db_unique_name='cdr001'
+    set db_create_file_dest='+DATA2/'
+    set control_files='+DATA1/CDR001/control01.ctl', '+DATA2/CDR001/control01.ctl'
+    set db_recovery_file_dest='+FRA'
+    set db_recovery_file_dest_size='20G'
+    set log_archive_dest_1='location=+FRA/CDR001/archivelogs/'
+    set log_archive_format='arch_%t_%s_%r.arc'
+    set audit_file_dest='/u01/app/oracle/admin/cdr001/adump'
+    set core_dump_dest='/u01/app/oracle/diag/rdbms/cdr001/cdr001/cdump'
+    set standby_file_management='AUTO'
+  DORECOVER NOFILENAMECHECK ;
+}
+
+---------------------------------------
+---------------------------------------
+
+-- on STANDBY database server
+-- as oracle user :
+
+export ORACLE_SID=cdr001
+export ORACLE_UNQNAME=cdb001
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/18.0.0/dbHome_01
+
+sqlplus / as sysdba
+
+
+
+COLUMN host_name FORMAT a30
+COLUMN archiver  FORMAT a10
+COLUMN blocked   FORMAT a10
+SELECT inst_id, name, database_role, open_mode, log_mode FROM gv$database ORDER BY 1 ;
+SELECT inst_id, instance_name, host_name, archiver, logins, blocked FROM gv$instance ORDER BY 1 ;
+
+   INST_ID NAME      DATABASE_ROLE    OPEN_MODE            LOG_MODE
+---------- --------- ---------------- -------------------- ------------
+         1 CDB001    PHYSICAL STANDBY MOUNTED              ARCHIVELOG
+
+   INST_ID INSTANCE_NAME    HOST_NAME                      ARCHIVER   LOGINS     BLOCKED
+---------- ---------------- ------------------------------ ---------- ---------- ----------
+         1 cdr001           ora2a.OracleByExample.com      STARTED    ALLOWED    NO
+
+/*
+notice :
+DATABASE_ROLE = PHYSICAL STANDBY
+*/
+
+COLUMN datafile_name FORMAT a50
+SELECT file#, name datafile_name FROM v$datafile ORDER BY 1 ;
+
+     FILE# DATAFILE_NAME
+---------- --------------------------------------------------
+         1 +DATADG/LIQUID/DATAFILE/system.273.932900719
+         3 +DATADG/LIQUID/DATAFILE/sysaux.277.932900731
+         4 +DATADG/LIQUID/DATAFILE/undotbs1.276.932900745
+         6 +DATADG/LIQUID/DATAFILE/users.275.932900757
+
+SELECT type, count(distinct group#) groups#, count(distinct member) members# FROM v$logfile GROUP BY type ORDER BY 1, 2 ;
+
+TYPE       GROUPS#   MEMBERS#
+------- ---------- ----------
+ONLINE           3          6
+STANDBY          4          8
+
+
+---------------------------------------
+
+-- start STANDBY recovery process
+alter database recover managed standby database cancel ;
+ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT FROM SESSION ;
+
+-- on standby database check for MRP and RFS processes :
+SELECT process, status, thread#, sequence# FROM v$managed_standby WHERE upper(process) LIKE 'MRP%' OR upper(process) LIKE 'RFS%' ;
+
+-- following query to check the log gap : can be executed on PRIMARY or STANDBY
+SELECT a.thread#, a.applied_sequence#, b.not_applied_sequence#, (b.not_applied_sequence# - a.applied_sequence#) delta FROM
+(SELECT thread#, max(sequence#) applied_sequence#     FROM v$archived_log WHERE applied='YES' GROUP BY thread#) a,
+(SELECT thread#, max(sequence#) not_applied_sequence# FROM v$archived_log GROUP BY thread#) b
+WHERE a.thread# = b.thread#
+ORDER BY 1 ;
+
+---------------------------------------
+
+
+
+-- after standby catches up
+-- you can shutdown and open standby db for read-only
+
+shutdown immediate ;
+
+startup mount ;
+alter database open read only ;
+alter pluggable database all open read only ;
+ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT FROM SESSION ;
+
+---------------------------------------
+COLUMN data_file_name  FORMAT a65
+COLUMN temp_file_name  FORMAT a65
+COLUMN log_file_name   FORMAT a65
+SELECT name data_file_name  FROM v$datafile ORDER BY 1 ;
+SELECT name temp_file_name  FROM v$tempfile ORDER BY 1 ;
+SELECT member log_file_name FROM v$logfile ORDER BY 1 ;
+show parameter control_files
+show parameter pfile
+
+-- notice spfile is on filesystem (not ASM)
+
+show parameter db_create_file_dest
+show parameter db_recovery_file_dest
+show parameter log_archive_dest_1
+show parameter log_archive_format
+show parameter standby_file_management
+
+---------------------------------------
+---------------------------------------
+
+-- at this point : on standby db : i noticed that all tempfiles for TEMP tablespace are placed on filesystem (not ASM)
+
+COLUMN file_name   FORMAT a65
+COLUMN auto_extend FORMAT a15
+
+SELECT file_id, file_name, bytes/(1024*1024*1024) size_gb, autoextensible auto_extend FROM dba_temp_files ;
+
+-- we cannot even run this query
+
+COLUMN container_id    FORMAT 999999999999
+COLUMN temp_file_id    FORMAT 999999999999
+COLUMN temp_file_name  FORMAT a65
+COLUMN tablespace_name FORMAT a20
+
+SELECT tbs.con_id container_id, tbs.name tablespace_name, tf.file# temp_file_id, tf.name temp_file_name
+FROM v$tempfile tf, v$tablespace tbs
+WHERE tf.ts# = tbs.ts# AND tf.con_id = tbs.con_id
+ORDER BY 1 ;
+
+
+alter session set container=CDB$ROOT ;
+ALTER TABLESPACE temp ADD TEMPFILE '+DATA2/CDR001/temp_tbls_01.dbf' SIZE 1g AUTOEXTEND OFF ;
+ALTER TABLESPACE temp DROP TEMPFILE 1 ;
+
+alter session set container=PDB$SEED ;
+ALTER TABLESPACE temp ADD TEMPFILE '+DATA1/CDR001/pdbseed/temp_tbls_01.dbf' SIZE 10m AUTOEXTEND OFF ;
+ALTER TABLESPACE temp DROP TEMPFILE 2 ;
+
+alter pluggable database PDB001 open read only ;
+alter session set container=PDB001 ;
+ALTER TABLESPACE temp ADD TEMPFILE '+DATA2/CDR001/pdb001/temp_tbls_01.dbf' SIZE 1g AUTOEXTEND OFF ;
+ALTER TABLESPACE temp DROP TEMPFILE 3 ;
+
+---------------------------------------
+---------------------------------------
+
+
+
+
+
+
+
+
+COLUMN dg_feature_name FORMAT a20
+COLUMN dg_feature_info FORMAT a60
+
+SELECT name dg_feature_name, version, dbms_lob.substr(feature_info, 200, 1) dg_feature_info
+FROM dba_feature_usage_statistics
+WHERE upper(name) LIKE '%DATA GUARD%'
+AND currently_used = 'TRUE' ;

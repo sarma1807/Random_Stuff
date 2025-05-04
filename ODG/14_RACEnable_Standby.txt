@@ -1,0 +1,235 @@
+-- my RAC has 2 nodes
+
+ora2a
+ora2b
+
+--------------
+
+-- as grid user
+
+export ORACLE_SID=+ASM1
+export ORACLE_UNQNAME=+ASM
+export ORACLE_BASE=/u01/app/grid
+export ORACLE_HOME=/u01/app/18.0.0/gridHome_01
+
+
+# establish the asm diskgroup dependency for the STANDBY db
+
+-- as grid user
+srvctl status database -db CDR001
+
+-- as oracle user
+srvctl add database -db CDR001 -oraclehome /u01/app/oracle/product/18.0.0/dbHome_01 -diskgroup "DATA1,DATA2,FRA"
+
+
+-- as grid user
+srvctl config database -db CDR001
+
+[grid@ora2a ~]$ srvctl config database -db CDR001
+Database unique name: CDR001
+Database name:
+Oracle home: /u01/app/oracle/product/18.0.0/dbHome_01
+Oracle user: oracle
+Spfile:
+Password file:
+Domain:
+Start options: open
+Stop options: immediate
+Database role: PRIMARY
+Management policy: AUTOMATIC
+Server pools:
+Disk Groups: DATA1,DATA2,FRA
+Mount point paths:
+Services:
+Type: RAC
+Start concurrency:
+Stop concurrency:
+OSDBA group: dba
+OSOPER group: oper
+Database instances:
+Configured nodes:
+CSS critical: no
+CPU count: 0
+Memory target: 0
+Maximum memory: 0
+Default network number for database services:
+Database is administrator managed
+[grid@ora2a ~]$
+
+
+
+crsctl status resource ora.cdr001.db -t
+
+[grid@ora2a ~]$ crsctl status resource ora.cdr001.db -t
+--------------------------------------------------------------------------------
+Name           Target  State        Server                   State details
+--------------------------------------------------------------------------------
+Cluster Resources
+--------------------------------------------------------------------------------
+ora.cdr001.db
+      1        OFFLINE OFFLINE                               STABLE
+--------------------------------------------------------------------------------
+[grid@ora2a ~]$
+
+
+--------------
+
+-- as oracle user
+srvctl modify database -db CDR001 -startoption 'READ ONLY'
+srvctl modify database -db CDR001 -role PHYSICAL_STANDBY
+
+
+### add all instances
+
+srvctl add instance -db CDR001 -instance CDR0011 -node ora2a
+srvctl add instance -db CDR001 -instance CDR0012 -node ora2b
+
+
+--------------
+
+### ORAPW settings
+
+-- as oracle user
+
+cp /u01/app/oracle/product/18.0.0/dbHome_01/dbs/orapwcdr001 /tmp/orapwCDR001
+
+chmod ugo+r /tmp/orapwCDR001
+
+-- as grid user
+
+asmcmd pwget    --dbuniquename CDR001
+asmcmd pwdelete --dbuniquename CDR001
+# at this point ORAPW file should NOT exist on ASM Disk Group
+
+asmcmd pwcopy --dbuniquename CDR001 /tmp/orapwCDR001 +DATA1/CDR001
+
+-- created pw file : +DATA1/CDR001/PASSWORD/pwdcdr001.273.1200167989
+
+asmcmd pwget --dbuniquename CDR001
+# at this point ORAPW file should exist on ASM Disk Group
+
+-- as oracle user
+srvctl modify database -db CDR001 -pwfile +DATA1/CDR001/PASSWORD/pwdcdr001.273.1200167989
+
+srvctl config database -db CDR001 | grep Password
+# at this point this should now show current ORAPW file and should properly be pointing to ASM
+
+[oracle@ora2a ~]$ srvctl config database -db CDR001 | grep Password
+Password file: +DATA1/CDR001/PASSWORD/pwdcdr001.273.1200167989
+[oracle@ora2a ~]$
+
+
+# following files are no longer required
+$ rm /mnt01/oracle/product/DBHome1911/dbs/orapwO19CDR1
+$ rm /tmp/orapwO19CDR
+
+--------------
+
+-- create spfile on ASM
+
+
+-- at this point : spfile is on filesystem (not ASM)
+
+cdr001:SYS@SQL> show parameter spfile
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+spfile                               string      /u01/app/oracle/product/18.0.0/dbHome_01/dbs/spfilecdr001.ora
+
+cdr001:SYS@SQL>
+
+
+-- as oracle user
+
+CREATE spfile='+DATA1' FROM memory ;
+
+-- created : +DATA1/CDR001/PARAMETERFILE/spfile.275.1200168383
+
+-- as oracle user
+srvctl modify database -db CDR001 -spfile +DATA1/CDR001/PARAMETERFILE/spfile.275.1200168383
+
+
+srvctl config database -db CDR001 | grep Spfile
+# at this point this should now show current SPFILE file and should properly be pointing to ASM
+
+[oracle@ora2a ~]$ srvctl config database -db CDR001 | grep Spfile
+Spfile: +DATA1/CDR001/PARAMETERFILE/spfile.275.1200168383
+[oracle@ora2a ~]$
+
+--------------
+
+-- enable RAC
+
+mv /u01/app/oracle/product/18.0.0/dbHome_01/dbs/spfilecdr001.ora /u01/app/oracle/product/18.0.0/dbHome_01/dbs/DONT_spfilecdr001.ora_DONT
+mv /u01/app/oracle/product/18.0.0/dbHome_01/dbs/initcdr001.ora /u01/app/oracle/product/18.0.0/dbHome_01/dbs/DONT_initcdr001.ora_DONT
+echo "spfile=+DATA1/CDR001/PARAMETERFILE/spfile.275.1200168383" > /u01/app/oracle/product/18.0.0/dbHome_01/dbs/initcdr001.ora
+
+[oracle@ora2a ~]$ cat /u01/app/oracle/product/18.0.0/dbHome_01/dbs/initcdr001.ora
+spfile=+DATA1/CDR001/PARAMETERFILE/spfile.275.1200168383
+[oracle@ora2a ~]$
+
+
+sqlplus / as sysdba
+
+startup nomount ;
+
+
+ALTER SYSTEM SET cluster_database=TRUE SCOPE=spfile SID='*' ;
+ALTER SYSTEM SET cluster_database_instances=2 SCOPE=spfile SID='*' ;
+
+ALTER SYSTEM SET instance_number=1 SCOPE=spfile SID='CDR0011' ;
+ALTER SYSTEM SET instance_number=2 SCOPE=spfile SID='CDR0012' ;
+
+ALTER SYSTEM SET thread=1 SCOPE=spfile SID='CDR0011' ;
+ALTER SYSTEM SET thread=2 SCOPE=spfile SID='CDR0012' ;
+
+ALTER SYSTEM SET undo_tablespace='UNDOTBS1' SCOPE=spfile SID='CDR0011' ;
+ALTER SYSTEM SET undo_tablespace='UNDOTBS2' SCOPE=spfile SID='CDR0012' ;
+
+ALTER SYSTEM SET local_listener='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=ora2a-vip.OracleByExample.com)(PORT=1521)))' SCOPE=spfile SID='CDR0011' ;
+ALTER SYSTEM SET local_listener='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=ora2b-vip.OracleByExample.com)(PORT=1521)))' SCOPE=spfile SID='CDR0012' ;
+
+
+-- create this folder on both nodes of RAC : mkdir -p /u01/app/oracle/admin/cdr001/adump
+ALTER SYSTEM SET audit_file_dest='/u01/app/oracle/admin/cdr001/adump' SCOPE=spfile SID='*' ;
+-- $ORACLE_BASE = /u01/app/oracle
+ALTER SYSTEM SET diagnostic_dest='/u01/app/oracle' SCOPE=both SID='*' ;
+
+shutdown immediate ;
+
+--------------
+
+# on all nodes of STANDBY cluster :
+
+$ vi /etc/oratab
+### need to add following entry, it is it not already added
+CDR001:/u01/app/oracle/product/18.0.0/dbHome_01:N
+###
+
+
+$ cat /etc/oratab | grep -i CDR001
+
+--------------
+
+-- as grid user
+
+srvctl status database -db CDR001
+
+srvctl start  database -db CDR001
+
+
+-- as oracle user
+
+db alert log : /u01/app/oracle/diag/rdbms/cdr001/CDR001?/trace/alert_CDR001?.log
+
+--------------
+--------------
+--------------
+--------------
+--------------
+--------------
+--------------
+--------------
+--------------
+--------------
+--------------

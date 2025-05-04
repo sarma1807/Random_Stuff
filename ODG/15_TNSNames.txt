@@ -1,0 +1,77 @@
+--------------
+
+-- on primary db (single node)
+
+-- as oracle user
+
+vi $ORACLE_HOME/network/admin/tnsnames.ora
+
+-- change HOST = ora2-scan
+-- also (UR = A) is no longer required
+
+CDR001 =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = ora2-scan)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = cdr001)
+      (UR = A)
+    )
+  )
+
+
+tnsping CDR001
+sqlplus sys/oracle@CDR001 as sysdba
+
+COLUMN host_name FORMAT a30
+COLUMN archiver  FORMAT a10
+COLUMN blocked   FORMAT a10
+SELECT inst_id, name, database_role, open_mode, log_mode FROM gv$database ORDER BY 1 ;
+SELECT inst_id, instance_name, host_name, archiver, logins, blocked FROM gv$instance ORDER BY 1 ;
+
+--------------
+
+-- on both RAC nodes (ora2a/ora2b)
+
+-- as grid user
+
+vi $ORACLE_HOME/network/admin/listener.ora
+
+-- remove following static listener
+
+SID_LIST_LISTENER=
+  (SID_LIST=
+    (SID_DESC=
+      (GLOBAL_DBNAME=cdr001)
+      (SID_NAME=cdr001)
+      (ORACLE_HOME=/u01/app/oracle/product/18.0.0/dbHome_01)
+    )
+  )
+
+--------------
+
+-- on both RAC nodes (ora2a/ora2b)
+
+-- as oracle user
+
+vi $ORACLE_HOME/network/admin/tnsnames.ora
+
+-- change HOST = ora2-scan
+-- also (UR = A) is no longer required
+
+CDR001 =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = ora2-scan)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = cdr001)
+      (UR = A)
+    )
+  )
+
+--------------
+--------------
+--------------
+--------------
+--------------
+--------------

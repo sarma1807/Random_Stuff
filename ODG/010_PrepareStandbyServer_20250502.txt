@@ -1,0 +1,158 @@
+------------------------------------------
+
+-- on STANDBY : 1st node of RAC
+
+-- prepare standby database instance's PFILE
+
+-- as oracle user :
+
+export ORACLE_SID=cdr001
+export ORACLE_UNQNAME=cdb001
+
+echo "DB_NAME=${ORACLE_SID}" > $ORACLE_HOME/dbs/init`echo ${ORACLE_SID}`.ora
+
+$ l $ORACLE_HOME/dbs/init`echo ${ORACLE_SID}`.ora
+-rw-r--r-- 1 oracle oinstall 15 May  2 19:50 /u01/app/oracle/product/18.0.0/dbHome_01/dbs/initcdr001.ora
+
+$ cat $ORACLE_HOME/dbs/init`echo ${ORACLE_SID}`.ora
+DB_NAME=cdr001
+
+------------------------------------------
+
+/*
+Copy oracle password file orapw<ORACLE_SID> from PRIMARY database server to STANDBY database server
+password file MUST BE SAME on PRIMARY and STANDBY servers
+Every database in a Data Guard configuration must use a password file, and the password for the SYS user must be identical on every system for redo data transmission to succeed.
+
+-- NOTE : $ORACLE_SID is in lower case. File names might be case-sensitive. In my case, I am using lower case
+
+Starting with Oracle 12c, in RAC, password files are stored in an ASM disk group.
+
+Password files for single instance databases are stored in : $ORACLE_HOME/dbs/orapw<ORACLE_SID>
+*/
+
+/*
+-- on PRIMARY database server
+-- as grid user (if password file is stored in an ASM disk group) :
+
+[grid@rex1 ~]$ asmcmd pwget --dbuniquename SOLID
++DATA/SOLID/PASSWORD/pwdsolid.276.930957781
+
+
+[grid@rex1 ~]$ asmcmd pwcopy +DATA/SOLID/PASSWORD/pwdsolid.276.930957781 /tmp/orapwsolid
+copying +DATA/SOLID/PASSWORD/pwdsolid.276.930957781 -> /tmp/orapwsolid
+
+
+[grid@rex1 ~]$ ll /tmp/orapwsolid
+-rw-r----- 1 grid oinstall 7680 Dec 26 00:05 /tmp/orapwsolid
+
+
+-- copy to STANDBY database server(s)
+-- as oracle user :
+
+[oracle@ray1 ~]$ scp grid@rex1:/tmp/orapwsolid $ORACLE_HOME/dbs/orapw`echo $ORACLE_SID`
+
+[oracle@ray1 ~]$ ll $ORACLE_HOME/dbs/orapw*
+-rw-r----- 1 oracle oinstall 7680 Dec 26 00:08 /u01/app/oracle/product/12.1.0/dbHome_1/dbs/orapwliquid1
+*/
+
+-- on STANDBY
+
+scp oracle@ora1:/u01/app/oracle/product/18.0.0/dbHome_01/dbs/orapwcdb001 oracle@ora2a:/u01/app/oracle/product/18.0.0/dbHome_01/dbs/orapw`echo $ORACLE_SID`
+
+
+$ l /u01/app/oracle/product/18.0.0/dbHome_01/dbs/orapw`echo $ORACLE_SID`
+-rw-r----- 1 oracle oinstall 3.5K May  2 19:54 /u01/app/oracle/product/18.0.0/dbHome_01/dbs/orapwcdr001
+
+
+------------------------------------------
+
+-- on STANDBY database server
+-- instead of depending on dynamic registration, add static entry into listener.ora
+-- in RAC on each node, (SID_NAME=<ORACLE_SID>)
+
+-- GLOBAL_DBNAME & SID_NAME IN lower-case
+
+-- as grid user :
+
+vi $ORACLE_HOME/network/admin/listener.ora
+
+SID_LIST_LISTENER=
+  (SID_LIST=
+    (SID_DESC=
+      (GLOBAL_DBNAME=cdr001)
+      (SID_NAME=cdr001)
+      (ORACLE_HOME=/u01/app/oracle/product/18.0.0/dbHome_01)
+    )
+  )
+
+
+-- restart the listener
+
+srvctl stop listener
+
+srvctl start listener
+
+[grid@ora2a ~]$ lsnrctl services
+
+LSNRCTL for Linux: Version 18.0.0.0.0 - Production on 02-MAY-2025 19:57:31
+
+Copyright (c) 1991, 2018, Oracle.  All rights reserved.
+
+Connecting to (DESCRIPTION=(ADDRESS=(PROTOCOL=IPC)(KEY=LISTENER)))
+Services Summary...
+Service "cdr001" has 1 instance(s).
+  Instance "cdr001", status UNKNOWN, has 1 handler(s) for this service...
+    Handler(s):
+      "DEDICATED" established:0 refused:0
+         LOCAL SERVER
+The command completed successfully
+[grid@ora2a ~]$
+
+[grid@ora2a ~]$ lsnrctl status
+
+LSNRCTL for Linux: Version 18.0.0.0.0 - Production on 02-MAY-2025 19:58:05
+
+Copyright (c) 1991, 2018, Oracle.  All rights reserved.
+
+Connecting to (DESCRIPTION=(ADDRESS=(PROTOCOL=IPC)(KEY=LISTENER)))
+STATUS of the LISTENER
+------------------------
+Alias                     LISTENER
+Version                   TNSLSNR for Linux: Version 18.0.0.0.0 - Production
+Start Date                02-MAY-2025 19:57:16
+Uptime                    0 days 0 hr. 0 min. 49 sec
+Trace Level               off
+Security                  ON: Local OS Authentication
+SNMP                      OFF
+Listener Parameter File   /u01/app/18.0.0/gridHome_01/network/admin/listener.ora
+Listener Log File         /u01/app/grid/diag/tnslsnr/ora2a/listener/alert/log.xml
+Listening Endpoints Summary...
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=ipc)(KEY=LISTENER)))
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=192.168.1.172)(PORT=1521)))
+  (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=192.168.1.174)(PORT=1521)))
+Services Summary...
+Service "cdr001" has 1 instance(s).
+  Instance "cdr001", status UNKNOWN, has 1 handler(s) for this service...
+The command completed successfully
+
+[grid@ora2a ~]$
+
+
+------------------------------------------
+
+-- on STANDBY database server
+-- create required folders for the standby database
+
+export ORACLE_UNQNAME=cdb001
+export ORACLE_SID=cdr001
+export ORACLE_BASE=/u01/app/oracle
+export ORACLE_HOME=/u01/app/oracle/product/18.0.0/dbHome_01
+
+
+mkdir -p $ORACLE_BASE/admin/$ORACLE_UNQNAME/adump
+mkdir -p $ORACLE_BASE/admin/$ORACLE_UNQNAME/cdump
+mkdir -p $ORACLE_BASE/diag/rdbms/$ORACLE_UNQNAME/$ORACLE_SID/cdump
+
+------------------------------------------
+
